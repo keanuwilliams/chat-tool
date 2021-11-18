@@ -8,13 +8,14 @@
 ##########################################################################
 # Imports
 import socket
+import threading
 
 ##########################################################################
 # Macros
 HEADER_LENGTH = 128
 HEADER_FORMAT = "utf-8"
 IP_ADDRESS = socket.gethostbyname(socket.gethostname())
-SERVER_IP_ADDRESS = "192.168.1.29"
+SERVER_IP_ADDRESS = "192.168.1.144"
 PORT = 5050
 DISCONNECT_MSG = "!DISCONNECT"
 
@@ -23,25 +24,27 @@ DISCONNECT_MSG = "!DISCONNECT"
 class Client:
   def __init__(self) -> None:
     self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    self.connected = False
 
   def start(self) -> None:
     print(f"Connecting to server at {SERVER_IP_ADDRESS}:{PORT}...", end="")
     self.client.connect((SERVER_IP_ADDRESS, PORT))
     print("Connection successful")
-    connected = True
-    while connected:
-      self.receive()
-      msg_to_send = ""
-      while msg_to_send == "":
-        msg_to_send = input(">> ")
+    self.connected = True
+    receive_thread = threading.Thread(target=self.receive)
+    receive_thread.start()
+    while self.connected:
+      # Get the message to send from user
+      msg_to_send = input()
       if DISCONNECT_MSG in msg_to_send.upper():
-        connected = False
+        self.connected = False
         print("Disconnecting from server...", end="")
       self.send(msg_to_send)
     print("Disconnected successfully")
       
   def receive(self) -> None:
-    print(self.client.recv(2048).decode(HEADER_FORMAT))
+    while self.connected:
+      print(self.client.recv(2048).decode(HEADER_FORMAT))
 
   def send(self, msg) -> None:
     # Encode the message in the correct format

@@ -23,6 +23,7 @@ class Server:
   def __init__(self) -> None:
     self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     self.server.bind((IP_ADDRESS, PORT))
+    self.chatrooms = {}
 
   def receive_msg(self, connection) -> str:
     """
@@ -37,31 +38,45 @@ class Server:
       return msg
     return ""
 
-  def get_name(self, connection) -> str:
-    """
-    Handles the process of receiving the name from the client.
-    Returns a string for the name received from the client.
-    """
-    name = ""
-    while name == "":
-      connection.send("Please enter a name.".encode(HEADER_FORMAT))
-      name = self.receive_msg(connection=connection)
-    return name
-
   def handle_connection(self, connection, address) -> None:
     """
     Handles the connection with the client.
     """
     print(f"[CONNECTION] {address} connected")
     connected = True
-    name = self.get_name(connection)
-    connection.send(f"Hello {name}.".encode(HEADER_FORMAT))
+    name = None
+    chatroom_num = None
+    connection.send("Please enter a name.".encode(HEADER_FORMAT))
     while connected:
       msg_from_client = self.receive_msg(connection)
       if DISCONNECT_MESSAGE in msg_from_client.upper():
         connected = False
-      print(f"[CLIENT {address[1]}] {msg_from_client}")
+      elif name == None:
+        name = msg_from_client
+        connection.send(f"Hello {name}.\nPlease enter a chatroom number.".encode(HEADER_FORMAT))
+      elif chatroom_num == None:
+        try:
+          chatroom_num = int(msg_from_client)
+          if not (chatroom_num in self.chatrooms):
+            self.chatrooms[chatroom_num] = []
+          self.chatrooms[chatroom_num].append(connection)
+          print(f"[CHATROOM] {address} added to chatroom #{chatroom_num}")
+          connection.send(f"--------------------\nWelcome to chatroom #{chatroom_num}!\nEnter {DISCONNECT_MESSAGE} to exit.\n".encode(HEADER_FORMAT))
+          for client in self.chatrooms[chatroom_num]:
+            if client != connection:
+              client.send(f"{name} entered the chat...".encode(HEADER_FORMAT))
+        except ValueError:
+          connection.send("Please enter a valid chatroom number.".encode(HEADER_FORMAT))
+      elif chatroom_num != None:
+        for client in self.chatrooms[chatroom_num]:
+          if client != connection:
+            client.send(f"[{name}] {msg_from_client}".encode(HEADER_FORMAT))
+
+    for client in self.chatrooms[chatroom_num]:
+      if client != connection:
+        client.send(f"{name} has left the chat...".encode(HEADER_FORMAT))
     print(f"[CONNECTION] {address} disconnected")
+    self.chatrooms[chatroom_num].remove(connection)
     connection.close()
 
   def start(self) -> None:
@@ -69,10 +84,10 @@ class Server:
     self.server.listen()
     print(f"[SERVER] listening on {IP_ADDRESS}:{PORT}")
     while True:
+      print(f"[CONNECTION] current active connections: {threading.active_count() - 1}")
       connection, address = self.server.accept()
       thread = threading.Thread(target=self.handle_connection, args=(connection, address))
       thread.start()
-      print(f"[CONNECTION] current active connections: {threading.active_count() - 1}")
 
 def main():
   try:
